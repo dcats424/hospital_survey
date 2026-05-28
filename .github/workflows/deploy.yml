@@ -41,20 +41,11 @@ jobs:
   CD:
     runs-on: ubuntu-latest
     needs: [CI]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.CD_ENABLED == 'true'
     steps:
-      - name: Check server secrets
-        id: check_secrets
-        run: |
-          if [ -n "${{ secrets.SERVER_HOST }}" ]; then
-            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
-            echo "ℹ️ No server secrets — skipping deployment"
-          fi
+      - uses: actions/checkout@v4
 
       - name: Deploy to server
-        if: steps.check_secrets.outputs.has_secrets == 'true'
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SERVER_HOST }}
