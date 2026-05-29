@@ -1,51 +1,75 @@
-name: CI/CD
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
 
+# Prevent multiple deployments at the same time
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
 jobs:
   CI:
+    name: Continuous Integration
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Setup Node
+    strategy:
+      matrix:
+        node-version: [20]
+
+    steps:
+      # Clone repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Node.js with npm cache
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: ${{ matrix.node-version }}
+          cache: npm
 
-      - name: Install dependencies
-        run: npm install
+      # Install backend dependencies
+      - name: Install backend dependencies
+        run: npm ci
 
-      - name: Syntax check
+      # Install frontend dependencies
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      # Backend syntax validation
+      - name: Backend syntax check
         run: |
-          node --check src/app.js
-          node --check src/server.js
-          node --check src/routes/auth.routes.js
-          node --check src/routes/survey.routes.js
-          node --check src/routes/upload.routes.js
-          node --check src/middleware/auth.js
-          node --check src/middleware/security.js
-          node --check src/services/bootstrap.js
-          node --check src/services/encounters.js
-          node --check src/utils/helpers.js
+          echo "Checking backend files..."
 
-      - name: Build frontend
+          find src -name "*.js" -print0 | while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            node --check "$file"
+          done
+
+      # Frontend production build test
+      - name: Frontend build check
         run: |
-          npm --prefix frontend install
+          echo "Building frontend..."
           npm --prefix frontend run build
 
-  CD:
-    runs-on: ubuntu-latest
-    needs: [CI]
-    if: github.ref == 'refs/heads/main' && vars.CD_ENABLED == 'true'
-    steps:
-      - uses: actions/checkout@v4
+      # Optional health message
+      - name: CI Success
+        run: echo "CI completed successfully"
 
-      - name: Deploy to server
+  CD:
+    name: Continuous Deployment
+    runs-on: ubuntu-latest
+    needs: CI
+
+    # Deploy only from main branch
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      # Deploy to VPS using SSH
+      - name: Deploy application to server
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -53,11 +77,41 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
           script_stop: true
-          debug: true
+
           script: |
+            set -e
+
+            echo "=============================="
+            echo "Starting deployment..."
+            echo "=============================="
+
             cd ${{ secrets.SERVER_PATH }}
+
+            echo "Pulling latest code..."
             git pull origin main
-            npm install --production
-            npm --prefix frontend install
+
+            echo "Updating database schema..."
+            export $(grep -v '^#' .env | xargs)
+            PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f sql/schema.sql
+            for f in sql/migrations/*.sql; do
+              PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f "$f"
+            done
+
+            echo "Installing backend dependencies..."
+            npm ci --production
+
+            echo "Installing frontend dependencies..."
+            npm --prefix frontend ci
+
+            echo "Building frontend..."
             npm --prefix frontend run build
+
+            echo "Restarting PM2 application..."
             pm2 restart survey-app || pm2 start src/server.js --name survey-app
+
+            echo "Saving PM2 process list..."
+            pm2 save
+
+            echo "=============================="
+            echo "Deployment completed successfully"
+            echo "=============================="
