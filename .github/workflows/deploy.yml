@@ -20,98 +20,89 @@ jobs:
         node-version: [20]
 
     steps:
-      # Clone repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Setup Node.js with npm cache
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      # Install backend dependencies
       - name: Install backend dependencies
         run: npm ci
 
-      # Install frontend dependencies
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
 
-      # Backend syntax validation
       - name: Backend syntax check
         run: |
           echo "Checking backend files..."
-
           find src -name "*.js" -print0 | while IFS= read -r -d '' file; do
             echo "Checking $file"
             node --check "$file"
           done
 
-      # Frontend production build test
       - name: Frontend build check
         run: |
           echo "Building frontend..."
           npm --prefix frontend run build
 
-      # Optional health message
       - name: CI Success
         run: echo "CI completed successfully"
 
   CD:
     name: Continuous Deployment
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: CI
 
-    # Deploy only from main branch
     if: github.ref == 'refs/heads/main'
 
     steps:
-      # Deploy to VPS using SSH
-      - name: Deploy application to server
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT }}
-          
+      - name: Deploy application
+        run: |
+          set -e
 
-          script: |
-            set -e
+          echo "=============================="
+          echo "Starting deployment..."
+          echo "=============================="
 
-            echo "=============================="
-            echo "Starting deployment..."
-            echo "=============================="
+          cd /home/administrator/Desktop/hospital_survey
 
-            cd ${{ secrets.SERVER_PATH }}
+          echo "Pulling latest code..."
+          git pull origin main
 
-            echo "Pulling latest code..."
-            git pull origin main
+          echo "Installing backend dependencies..."
+          npm ci --omit=dev
 
-            echo "Updating database schema..."
-            export $(grep -v '^#' .env | xargs)
-            PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f sql/schema.sql
-            for f in sql/migrations/*.sql; do
-              PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f "$f"
-            done
+          echo "Installing frontend dependencies..."
+          npm --prefix frontend ci
 
-            echo "Installing backend dependencies..."
-            npm ci --production
+          echo "Updating database schema..."
+          set -a
+          source .env
+          set +a
 
-            echo "Installing frontend dependencies..."
-            npm --prefix frontend ci
+          PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f sql/schema.sql
 
-            echo "Building frontend..."
-            npm --prefix frontend run build
+          shopt -s nullglob
+          for f in sql/migrations/*.sql; do
+            echo "Running migration: $f"
+            PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f "$f"
+          done
 
-            echo "Restarting PM2 application..."
-            pm2 restart survey-app || pm2 start src/server.js --name survey-app
+          echo "Building frontend..."
+          npm --prefix frontend run build
 
-            echo "Saving PM2 process list..."
-            pm2 save
+          echo "Restarting PM2 application..."
+          pm2 restart survey-app || pm2 start src/server.js --name survey-app
 
-            echo "=============================="
-            echo "Deployment completed successfully"
-            echo "=============================="
+          echo "Saving PM2 process list..."
+          pm2 save
+
+          echo "Checking PM2 status..."
+          pm2 status
+
+          echo "=============================="
+          echo "Deployment completed successfully"
+          echo "=============================="
