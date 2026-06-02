@@ -72,7 +72,7 @@ jobs:
           echo "Pulling latest code..."
           git fetch origin    
           git reset --hard origin/main
-          git clean -fd
+          git clean -fdx -e .env
 
           echo "Installing backend dependencies..."
           npm ci --omit=dev
@@ -93,11 +93,15 @@ jobs:
             PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f "$f"
           done
 
+          echo "Running seed data..."
+          PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f sql/seed.sql
+
           echo "Building frontend..."
           npm --prefix frontend run build
 
           echo "Restarting PM2 application..."
-          pm2 restart survey-app || pm2 start src/server.js --name survey-app
+          export NODE_ENV=production
+          pm2 restart survey-app --update-env || pm2 start src/server.js --name survey-app
 
           echo "Saving PM2 process list..."
           pm2 save

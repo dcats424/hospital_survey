@@ -17,4 +17,20 @@ function rateLimit(key, maxAttempts = 5, windowMs = 60000) {
   return entry.count <= maxAttempts ? null : Math.ceil((entry.resetAt - now) / 1000);
 }
 
-module.exports = { rateLimit };
+function rateLimitMiddleware(name, max, windowMs) {
+  return (req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const retryAfter = rateLimit(name + ':' + ip, max, windowMs);
+    if (retryAfter) {
+      return res.status(429).json({ error: 'too_many_requests', retry_after: retryAfter });
+    }
+    next();
+  };
+}
+
+const feedbackLimiter = rateLimitMiddleware('feedback', 10, 60000);
+const smsLimiter = rateLimitMiddleware('sms', 10, 60000);
+const emailLimiter = rateLimitMiddleware('email', 5, 60000);
+const importLimiter = rateLimitMiddleware('import', 3, 60000);
+
+module.exports = { rateLimit, feedbackLimiter, smsLimiter, emailLimiter, importLimiter };

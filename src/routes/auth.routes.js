@@ -3,14 +3,10 @@ const { hashPassword, verifyPassword } = require('../utils/helpers');
 const { generateSessionToken } = require('../utils/idGenerator');
 const { requireAuth, sessions, hashToken } = require('../middleware/auth');
 const { rateLimit } = require('../middleware/rateLimiter');
-const { ALL_MODULES } = require('../utils/constants');
 const { logActivity } = require('../services/activity');
-const { ensureAdminUsersTable } = require('../services/bootstrap');
-
 function register(app) {
   app.get('/api/auth/check', async function (req, res) {
     try {
-      await ensureAdminUsersTable();
       const result = await db.query('SELECT COUNT(*) as count FROM admin_users');
       const hasUsers = parseInt(result.rows[0].count) > 0;
       return res.json({ has_users: hasUsers });
@@ -21,7 +17,6 @@ function register(app) {
 
   app.post('/api/auth/register', async function (req, res) {
     try {
-      await ensureAdminUsersTable();
       
       const ip = req.ip || req.connection.remoteAddress || 'unknown';
       const retryAfter = rateLimit('register:' + ip, 10, 60000);
@@ -66,9 +61,15 @@ function register(app) {
         return res.status(400).json({ error: 'username_min_3_chars' });
       }
       
+      let assignedRoleId = role_id || null;
+      if (isFirstAdmin) {
+        const sar = await db.query('SELECT id FROM roles WHERE name = $1', ['Super Admin']);
+        if (sar.rows[0]) assignedRoleId = sar.rows[0].id;
+      }
+      
       const result = await db.query(
         'INSERT INTO admin_users(username, email, password_hash, role_id) VALUES($1, $2, $3, $4) RETURNING id, username, email',
-        [usernameClean, email.trim().toLowerCase(), passwordHash, role_id || null]
+        [usernameClean, email.trim().toLowerCase(), passwordHash, assignedRoleId]
       );
       
       return res.json({ user: result.rows[0] });
@@ -82,7 +83,6 @@ function register(app) {
 
   app.post('/api/auth/login', async function (req, res) {
     try {
-      await ensureAdminUsersTable();
       
       const ip = req.ip || req.connection.remoteAddress || 'unknown';
       const retryAfter = rateLimit('login:' + ip);
@@ -112,7 +112,7 @@ function register(app) {
       }
       
       const sessionToken = generateSessionToken();
-      let permissions = ALL_MODULES;
+      let permissions = [];
       if (user.role_id) {
         const permResult = await db.query('SELECT module FROM role_permissions WHERE role_id = $1', [user.role_id]);
         permissions = (permResult.rows || []).map(r => r.module);

@@ -1115,6 +1115,8 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
       initialLoadedTabRef.current = null;
     }
 
+    if (activeTab === 'dashboard') { loadAll(false); return; }
+
     if (activeTab === 'responses') {
       fetchResponsesWithFilters(pagination.page, filters);
       return;
@@ -1960,7 +1962,7 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
         setActiveTab={setActiveTab}
       />
 
-      <main className={`flex-1 overflow-hidden transition-all duration-300 ${sidebarOpen ? 'md:ml-64' : 'md:ml-0'}`}>
+      <main className={`flex-1 overflow-hidden transition-all duration-300 ${sidebarOpen ? 'md:ml-64' : 'md:ml-16'}`}>
         <AdminHeader
           activeTab={activeTab}
           setActiveTab={setActiveTab}

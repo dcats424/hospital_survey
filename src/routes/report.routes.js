@@ -1,5 +1,6 @@
 const path = require('path');
 const db = require('../config/database');
+const { emailLimiter } = require('../middleware/rateLimiter');
 const { requireAuth, requireModule } = require('../middleware/auth');
 const { textOrEmpty, csvEscape } = require('../utils/helpers');
 const { fetchQuestions } = require('../services/questions');
@@ -1069,7 +1070,7 @@ function register(app) {
     }
   });
 
-  app.post('/api/doctor-ratings/send-email', requireAuth, requireModule('doctor-ratings'), async function (req, res) {
+  app.post('/api/doctor-ratings/send-email', requireAuth, requireModule('doctor-ratings'), emailLimiter, async function (req, res) {
     try {
       const { doctor_id, doctor_name, email, average_rating, total_patients, total_ratings, date_from, date_to, question_ratings, department } = req.body;
 
@@ -1203,7 +1204,7 @@ Management Team`;
     }
   });
 
-  app.post('/api/doctor-ratings/send-all', requireAuth, requireModule('doctor-ratings'), async function (req, res) {
+  app.post('/api/doctor-ratings/send-all', requireAuth, requireModule('doctor-ratings'), emailLimiter, async function (req, res) {
     try {
       const { ratings, date_from, date_to } = req.body;
       

@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 const db = require('../config/database');
-const { ALL_MODULES } = require('../utils/constants');
 
 let sessions = new Map();
 
@@ -19,6 +18,39 @@ function hydrateSessions(loaded) {
 async function loadSessions() {
   await db.query(`DELETE FROM admin_sessions WHERE expires_at IS NOT NULL AND expires_at < NOW()`);
   await db.query(`DELETE FROM admin_sessions WHERE expires_at IS NULL AND created_at < NOW() - INTERVAL '7 days'`);
+
+  const result = await db.query(
+    `SELECT s.token, s.user_id, s.username, s.email, s.expires_at, u.role_id
+     FROM admin_sessions s
+     LEFT JOIN admin_users u ON u.id = s.user_id
+     WHERE s.expires_at IS NULL OR s.expires_at > NOW()`
+  );
+
+  const roleIds = [...new Set(result.rows.filter(r => r.role_id).map(r => r.role_id))];
+  const permissionsByRole = {};
+  if (roleIds.length > 0) {
+    const permResult = await db.query(
+      `SELECT role_id, module FROM role_permissions WHERE role_id = ANY($1)`,
+      [roleIds]
+    );
+    for (const row of permResult.rows) {
+      if (!permissionsByRole[row.role_id]) permissionsByRole[row.role_id] = [];
+      permissionsByRole[row.role_id].push(row.module);
+    }
+  }
+
+  const loaded = result.rows.map(r => {
+    const permissions = r.role_id ? (permissionsByRole[r.role_id] || []) : [];
+    return [r.token, {
+      id: r.user_id,
+      username: r.username,
+      email: r.email,
+      role_id: r.role_id,
+      permissions,
+      expires_at: r.expires_at
+    }];
+  });
+  hydrateSessions(loaded);
   return sessions;
 }
 

@@ -1,3 +1,4 @@
+const { smsLimiter } = require('../middleware/rateLimiter');
 const { requireAuth, requireModule } = require('../middleware/auth');
 const encountersService = require('../services/encounters');
 const { logActivity } = require('../services/activity');
@@ -55,7 +56,7 @@ function register(app) {
     }
   });
 
-  app.post('/api/encounters/:id/send-sms', requireAuth, requireModule('encounters'), async (req, res) => {
+  app.post('/api/encounters/:id/send-sms', requireAuth, requireModule('encounters'), smsLimiter, async (req, res) => {
     try {
       const result = await encountersService.sendSurveySms(req.params.id);
       await logActivity(req.adminUser.id, 'send_survey_sms', { encounter_id: req.params.id, provider: result.provider });
@@ -70,7 +71,7 @@ function register(app) {
     }
   });
 
-  app.post('/api/encounters/send-all-sms', requireAuth, requireModule('encounters'), async (req, res) => {
+  app.post('/api/encounters/send-all-sms', requireAuth, requireModule('encounters'), smsLimiter, async (req, res) => {
     try {
       const ids = req.body.ids || null;
       const result = await encountersService.sendAllSurveySms(ids);

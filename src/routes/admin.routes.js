@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { emailLimiter } = require('../middleware/rateLimiter');
 const { requireAuth, requireModule, sessions } = require('../middleware/auth');
 const { ALL_MODULES } = require('../utils/constants');
 const { hashPassword } = require('../utils/helpers');
@@ -234,7 +235,7 @@ function register(app) {
     }
   });
 
-  app.post('/api/admin/settings/test-email', requireAuth, requireModule('email-settings'), async function (req, res) {
+  app.post('/api/admin/settings/test-email', requireAuth, requireModule('email-settings'), emailLimiter, async function (req, res) {
     try {
       const result = await sendEmail({
         to: req.adminUser.email,

@@ -4,10 +4,11 @@ const { fetchQuestions, issueSurveyFromPayload } = require('../services/question
 const { sendSms } = require('../services/sms');
 const { textOrEmpty, sanitizeText, normalizeRegistrationBody } = require('../utils/helpers');
 const { validateQuestionAnswers } = require('../utils/validators');
-const { requireAuth } = require('../middleware/auth');
+const { feedbackLimiter } = require('../middleware/rateLimiter');
+const { requireAuth, requireModule } = require('../middleware/auth');
 
 function register(app, BASE_URL) {
-  app.post('/api/survey/start', async (req, res) => {
+  app.post('/api/survey/start', feedbackLimiter, async (req, res) => {
     try {
       const tokenData = await surveyService.createToken();
       res.json({
@@ -19,7 +20,7 @@ function register(app, BASE_URL) {
     }
   });
 
-  app.get('/api/survey', async (req, res) => {
+  app.get('/api/survey', feedbackLimiter, async (req, res) => {
     const token = req.query.token || req.query.t;
     
     if (!token) {
@@ -55,8 +56,6 @@ function register(app, BASE_URL) {
       doctors = doctorRows.rows;
     }
     
-    const { ensureQuestionsTableAndDefaults } = require('../services/bootstrap');
-    await ensureQuestionsTableAndDefaults();
     const doctorQuestions = await fetchQuestions({ includeInactive: false, category: 'doctor' });
     const generalQuestions = await fetchQuestions({ includeInactive: false, category: 'general' });
     
@@ -91,7 +90,7 @@ function register(app, BASE_URL) {
     });
   });
 
-  app.post('/api/feedback', async (req, res) => {
+  app.post('/api/feedback', feedbackLimiter, async (req, res) => {
     try {
       const token = req.body.token;
       const questionAnswers = req.body.question_answers || {};
@@ -155,7 +154,7 @@ function register(app, BASE_URL) {
     }
   });
 
-  app.post('/api/register/visit', requireAuth, async function (req, res) {
+  app.post('/api/register/visit', requireAuth, requireModule('encounters'), async function (req, res) {
     try {
       const normalized = normalizeRegistrationBody(req.body);
       if (normalized.error) return res.status(400).json({ error: normalized.error });

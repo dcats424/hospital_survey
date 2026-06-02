@@ -4,12 +4,9 @@ const { normalizeQuestionInput } = require('../utils/helpers');
 const { QUESTION_TYPES } = require('../utils/constants');
 const { logActivity } = require('../services/activity');
 const { fetchQuestions } = require('../services/questions');
-const { ensureQuestionsTableAndDefaults } = require('../services/bootstrap');
-
 function register(app) {
   app.get('/api/questions', requireAuth, requireModule('questions'), async function (req, res) {
     try {
-      await ensureQuestionsTableAndDefaults();
       const includeInactive = String(req.query.all || '').toLowerCase() === 'true';
       const questions = await fetchQuestions({ includeInactive });
       return res.json({ count: questions.length, questions });
@@ -21,7 +18,6 @@ function register(app) {
 
   app.post('/api/questions', requireAuth, requireModule('questions'), async function (req, res) {
     try {
-      await ensureQuestionsTableAndDefaults();
       const normalized = normalizeQuestionInput(req.body, QUESTION_TYPES);
       if (normalized.error) return res.status(400).json({ error: normalized.error });
 
@@ -48,7 +44,6 @@ function register(app) {
 
   app.patch('/api/questions/:id', requireAuth, requireModule('questions'), async function (req, res) {
     try {
-      await ensureQuestionsTableAndDefaults();
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_question_id' });
 
@@ -121,7 +116,6 @@ function register(app) {
 
   app.delete('/api/questions/:id', requireAuth, requireModule('questions'), async function (req, res) {
     try {
-      await ensureQuestionsTableAndDefaults();
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid_question_id' });
 
@@ -140,7 +134,6 @@ function register(app) {
 
   app.post('/api/questions/reorder', requireAuth, requireModule('questions'), async function (req, res) {
     try {
-      await ensureQuestionsTableAndDefaults();
       const ids = Array.isArray(req.body.ids) ? req.body.ids.map((x) => Number(x)).filter((x) => Number.isInteger(x) && x > 0) : [];
       if (!ids.length) return res.status(400).json({ error: 'ids_required' });
 

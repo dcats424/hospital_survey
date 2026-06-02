@@ -1,5 +1,6 @@
 const fs = require('fs');
 const db = require('../config/database');
+const { importLimiter } = require('../middleware/rateLimiter');
 const { requireAuth, requireModule } = require('../middleware/auth');
 const doctorsService = require('../services/doctors');
 const patientsService = require('../services/patients');
@@ -8,7 +9,7 @@ const { logActivity } = require('../services/activity');
 function register(app, upload) {
   const XLSX = require('xlsx');
 
-  app.post('/api/import', requireAuth, requireModule('import'), upload.single('file'), async (req, res) => {
+  app.post('/api/import', requireAuth, requireModule('import'), importLimiter, upload.single('file'), async (req, res) => {
     try {
       const module = String(req.body.module || '').trim().toLowerCase();
       if (!['doctors', 'patients'].includes(module)) {
