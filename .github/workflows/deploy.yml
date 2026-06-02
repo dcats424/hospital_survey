@@ -70,7 +70,9 @@ jobs:
           cd /home/administrator/Desktop/hospital_survey
 
           echo "Pulling latest code..."
-          git pull origin main
+          git fetch origin    
+          git reset --hard origin/main
+          git clean -fd
 
           echo "Installing backend dependencies..."
           npm ci --omit=dev
