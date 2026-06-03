@@ -27,8 +27,8 @@ function register(app) {
     }
 
     if (doctorId) {
-      conditions.push(`fs.selected_doctor_ids::text ILIKE $${paramIdx}`);
-      params.push('%' + doctorId + '%');
+      conditions.push(`fs.selected_doctor_ids @> ARRAY[$${paramIdx}]::text[]`);
+      params.push(doctorId);
       paramIdx++;
     }
 
@@ -47,17 +47,30 @@ function register(app) {
     const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
     if (!grouped) {
+      const countSql = `SELECT COUNT(*) AS total FROM feedback_submissions fs ${whereClause}`;
+      const countResult = await db.query(countSql, params);
+      const totalCount = parseInt(countResult.rows[0]?.total || 0);
+      const offset = (page - 1) * limit;
+
       let sql = `SELECT fs.id AS submission_id, fs.submitted_at, fs.token, fs.patient_name,
                   fs.question_answers
                   FROM feedback_submissions fs
                   ${whereClause}
-                  ORDER BY fs.submitted_at DESC, fs.id DESC`;
-      const rows = await db.query(sql, params);
+                  ORDER BY fs.submitted_at DESC, fs.id DESC
+                  LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`;
+      const rows = await db.query(sql, [...params, limit, offset]);
       const sanitized = rows.rows.map(r => ({
         ...r,
         question_answers: sanitizeObjectStrings(r.question_answers || {})
       }));
-      return res.json({ count: rows.rowCount, responses: sanitized });
+      return res.json({
+        count: rows.rowCount,
+        total: totalCount,
+        page,
+        limit,
+        total_pages: Math.ceil(totalCount / limit),
+        responses: sanitized
+      });
     }
 
     const countSql = `SELECT COUNT(DISTINCT fs.id) AS total FROM feedback_submissions fs ${whereClause}`;
