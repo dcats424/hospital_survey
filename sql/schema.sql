@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS doctors (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   department TEXT,
-  is_active BOOLEAN DEFAULT TRUE,
+  status TEXT DEFAULT 'active',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ,
   email TEXT,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS doctors (
 
 CREATE UNIQUE INDEX IF NOT EXISTS doctors_email_key ON doctors(email);
 CREATE INDEX IF NOT EXISTS idx_doctors_name ON doctors(name);
-CREATE INDEX IF NOT EXISTS idx_doctors_active_name ON doctors(is_active, name);
+CREATE INDEX IF NOT EXISTS idx_doctors_status_name ON doctors(status, name);
 
 CREATE TABLE IF NOT EXISTS roles (
   id BIGSERIAL PRIMARY KEY,

@@ -1,6 +1,12 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Edit3, Mail, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Edit3, Mail, Plus, Search, Trash2, Users, X, AlertTriangle } from 'lucide-react';
 import ClipLoader from 'react-spinners/ClipLoader';
+
+const statusColors = {
+  active: 'bg-green-100 text-green-700',
+  left: 'bg-red-100 text-red-700',
+  suspended: 'bg-yellow-100 text-yellow-700'
+};
 
 export default function DoctorsSection({
   doctors,
@@ -16,6 +22,7 @@ export default function DoctorsSection({
   onOpenEditDoctor,
   onDeleteDoctor,
   onReactivateDoctor,
+  onPermanentDeleteDoctor,
   doctorsPagination,
   changeDoctorsPage,
   fetchDoctorsWithLimit
@@ -38,22 +45,7 @@ export default function DoctorsSection({
 
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            {['active', 'inactive'].map(f => (
-              <button
-                key={f}
-                onClick={() => handleDoctorsFilter(f)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  doctorsFilter === f
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                {f === 'active' ? 'Active' : 'Inactive'}
-              </button>
-            ))}
-          </div>
-          <form onSubmit={handleDoctorsSearch} className="flex items-center gap-3 flex-1 justify-end">
+          <form onSubmit={handleDoctorsSearch} className="flex items-center gap-3">
             <div className="w-64 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -82,6 +74,18 @@ export default function DoctorsSection({
               </button>
             )}
           </form>
+          <div className="ml-auto">
+            <select
+              value={doctorsFilter}
+              onChange={(e) => handleDoctorsFilter(e.target.value)}
+              className="px-4 py-2 border-2 border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white"
+            >
+              <option value="active">Active</option>
+              <option value="left">Left</option>
+              <option value="suspended">Suspended</option>
+              <option value="all">All</option>
+            </select>
+          </div>
         </div>
 
         {doctorLoading ? (
@@ -154,23 +158,27 @@ export default function DoctorsSection({
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          doctor.is_active
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {doctor.is_active ? 'Active' : 'Inactive'}
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColors[doctor.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {doctor.status ? doctor.status.charAt(0).toUpperCase() + doctor.status.slice(1) : 'Unknown'}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
-                        {!doctor.is_active && (
-                          <button
-                            onClick={() => onReactivateDoctor(doctor.id)}
-                            className="text-green-600 hover:text-green-800 mr-3 font-medium text-sm"
-                          >
-                            Activate
-                          </button>
-                        )}
+                        {doctor.status === 'left' || doctor.status === 'suspended' ? (
+                          <>
+                            <button
+                              onClick={() => onReactivateDoctor(doctor.id)}
+                              className="text-green-600 hover:text-green-800 mr-3 font-medium text-sm"
+                            >
+                              Reactivate
+                            </button>
+                            <button
+                              onClick={() => onPermanentDeleteDoctor(doctor)}
+                              className="text-red-600 hover:text-red-800 mr-3 font-medium text-sm"
+                            >
+                              <AlertTriangle className="w-4 h-4 inline" />
+                            </button>
+                          </>
+                        ) : null}
                         <button
                           onClick={() => onOpenEditDoctor(doctor)}
                           className="text-blue-600 hover:text-blue-800 mr-4"

@@ -10,16 +10,18 @@ function makeId(prefix) {
   return prefix + '-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex');
 }
 
-async function getAllDoctors(activeOnly = true) {
-  const where = activeOnly ? 'WHERE is_active = TRUE' : '';
+async function getAllDoctors(statusFilter = 'active') {
+  const where = statusFilter ? 'WHERE status = $1' : '';
+  const values = statusFilter ? [statusFilter] : [];
   const result = await db.query(
-    `SELECT id, name, department, email, image_url, is_active, created_at 
-     FROM doctors ${where} ORDER BY name ASC`
+    `SELECT id, name, department, email, image_url, status, created_at 
+     FROM doctors ${where} ORDER BY name ASC`,
+    values
   );
   return result.rows;
 }
 
-async function getDoctorsPaginated({ search = '', page = 1, limit = 10, active = 'all' }) {
+async function getDoctorsPaginated({ search = '', page = 1, limit = 10, status = 'all' }) {
   const offset = (page - 1) * limit;
   const searchPattern = '%' + search.toLowerCase() + '%';
   const conditions = [];
@@ -31,10 +33,18 @@ async function getDoctorsPaginated({ search = '', page = 1, limit = 10, active =
     values.push(searchPattern);
     idx++;
   }
-  if (active === 'active') {
-    conditions.push('is_active = TRUE');
-  } else if (active === 'inactive') {
-    conditions.push('is_active = FALSE');
+  if (status === 'active') {
+    conditions.push(`status = $${idx}`);
+    values.push('active');
+    idx++;
+  } else if (status === 'left') {
+    conditions.push(`status = $${idx}`);
+    values.push('left');
+    idx++;
+  } else if (status === 'suspended') {
+    conditions.push(`status = $${idx}`);
+    values.push('suspended');
+    idx++;
   }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -47,10 +57,12 @@ async function getDoctorsPaginated({ search = '', page = 1, limit = 10, active =
 
   values.push(limit, offset);
   const result = await db.query(
-    `SELECT id, name, department, email, image_url, is_active, created_at 
+    `SELECT id, name, department, email, image_url, status, created_at 
      FROM doctors 
      ${whereClause}
-     ORDER BY is_active DESC, name ASC
+     ORDER BY 
+       CASE status WHEN 'active' THEN 1 WHEN 'suspended' THEN 2 WHEN 'left' THEN 3 END,
+       name ASC
      LIMIT $${idx} OFFSET $${idx + 1}`,
     values
   );
@@ -100,7 +112,7 @@ async function createDoctor({ name, department, email, image_url }) {
   }
 }
 
-async function updateDoctor(id, { name, department, email, is_active, image_url }) {
+async function updateDoctor(id, { name, department, email, status, image_url }) {
   const updates = [];
   const values = [];
   let idx = 1;
@@ -127,9 +139,9 @@ async function updateDoctor(id, { name, department, email, is_active, image_url 
       values.push(null);
     }
   }
-  if (is_active !== undefined) {
-    updates.push(`is_active = $${idx++}`);
-    values.push(is_active);
+  if (status !== undefined) {
+    updates.push(`status = $${idx++}`);
+    values.push(status);
   }
   if (image_url !== undefined) {
     updates.push(`image_url = $${idx++}`);
@@ -151,11 +163,36 @@ async function updateDoctor(id, { name, department, email, is_active, image_url 
 }
 
 async function deleteDoctor(id) {
-  const result = await db.query(
-    'UPDATE doctors SET is_active = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id',
+  const linkCheck = await db.query(
+    `SELECT
+      (SELECT COUNT(*) FROM encounter_doctors WHERE doctor_id = $1) AS encounters,
+      (SELECT COUNT(*) FROM feedback_ratings WHERE doctor_id = $1) AS ratings`,
     [id]
   );
+  const { encounters, ratings } = linkCheck.rows[0];
+  if (Number(encounters) > 0 || Number(ratings) > 0) {
+    const parts = [];
+    if (Number(encounters) > 0) parts.push(encounters + ' encounter(s)');
+    if (Number(ratings) > 0) parts.push(ratings + ' response(s)');
+    throw new Error('has_associated_data:' + parts.join(' and '));
+  }
+  const result = await db.query('DELETE FROM doctors WHERE id = $1 RETURNING id', [id]);
   return result.rowCount > 0;
 }
 
-module.exports = { getAllDoctors, getDoctorsPaginated, getDoctorById, createDoctor, updateDoctor, deleteDoctor };
+async function permanentlyDeleteDoctor(id) {
+  const result = await db.query('DELETE FROM doctors WHERE id = $1 RETURNING id', [id]);
+  return result.rowCount > 0;
+}
+
+async function updateDoctorStatus(id, status) {
+  const valid = ['active', 'left', 'suspended'];
+  if (!valid.includes(status)) throw new Error('invalid_status');
+  const result = await db.query(
+    'UPDATE doctors SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *',
+    [id, status]
+  );
+  return result.rows[0] || null;
+}
+
+module.exports = { getAllDoctors, getDoctorsPaginated, getDoctorById, createDoctor, updateDoctor, deleteDoctor, permanentlyDeleteDoctor, updateDoctorStatus };

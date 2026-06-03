@@ -132,6 +132,19 @@ async function updatePatient(id, { name, phone, is_active }) {
 }
 
 async function deletePatient(id) {
+  const linkCheck = await db.query(
+    `SELECT
+      (SELECT COUNT(*) FROM encounters WHERE patient_id = $1) AS encounters,
+      (SELECT COUNT(*) FROM feedback_submissions WHERE patient_id = $1) AS responses`,
+    [id]
+  );
+  const { encounters, responses } = linkCheck.rows[0];
+  if (Number(encounters) > 0 || Number(responses) > 0) {
+    const parts = [];
+    if (Number(encounters) > 0) parts.push(encounters + ' encounter(s)');
+    if (Number(responses) > 0) parts.push(responses + ' response(s)');
+    throw new Error('has_associated_data:' + parts.join(' and '));
+  }
   const result = await db.query('DELETE FROM patients WHERE id = $1 RETURNING id', [id]);
   return result.rowCount > 0;
 }

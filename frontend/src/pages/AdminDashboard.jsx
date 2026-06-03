@@ -175,10 +175,11 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
   const [doctorsSearchInput, setDoctorsSearchInput] = React.useState('');
   const [showDoctorModal, setShowDoctorModal] = React.useState(false);
   const [editingDoctor, setEditingDoctor] = React.useState(null);
-  const [doctorForm, setDoctorForm] = React.useState({ name: '', department: '', email: '', image_url: '' });
+  const [doctorForm, setDoctorForm] = React.useState({ name: '', department: '', email: '', image_url: '', status: 'active' });
   const [doctorLoading, setDoctorLoading] = React.useState(false);
   const [doctorsFilter, setDoctorsFilter] = React.useState('active');
   const [deleteDoctorModal, setDeleteDoctorModal] = React.useState({ isOpen: false, doctor: null });
+  const [permanentDeleteDoctorModal, setPermanentDeleteDoctorModal] = React.useState({ isOpen: false, doctor: null });
 
   const [patients, setPatients] = React.useState([]);
   const [patientsPagination, setPatientsPagination] = React.useState({ page: 1, limit: 10, total: 0, total_pages: 0 });
@@ -309,10 +310,10 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
   }
 
   async function fetchDoctors(page = 1, search = '', filter) {
-    const active = filter || doctorsFilter;
+    const status = filter || doctorsFilter;
     setDoctorLoading(true);
     try {
-      const params = new URLSearchParams({ page, limit: doctorsPagination.limit, active });
+      const params = new URLSearchParams({ page, limit: doctorsPagination.limit, status });
       if (search) params.set('search', search);
       const res = await fetch('/api/doctors?' + params.toString(), { headers: headers() });
       const data = await res.json();
@@ -333,10 +334,10 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
   }
 
   async function fetchDoctorsWithLimit(page = 1, search = '', limit, filter) {
-    const active = filter || doctorsFilter;
+    const status = filter || doctorsFilter;
     setDoctorLoading(true);
     try {
-      const params = new URLSearchParams({ page, limit, active });
+      const params = new URLSearchParams({ page, limit, status });
       if (search) params.set('search', search);
       const res = await fetch('/api/doctors?' + params.toString(), { headers: headers() });
       const data = await res.json();
@@ -506,7 +507,15 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
         headers: headers()
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!res.ok) {
+        if (data.error && data.error.startsWith('has_associated_data:')) {
+          const details = data.error.replace('has_associated_data:', '');
+          toast.error('Cannot delete: doctor is linked to ' + details + '. Set status to "Left" instead.');
+        } else {
+          throw new Error(data.error || 'Failed');
+        }
+        return;
+      }
       toast.success('Doctor deleted');
       setDeleteDoctorModal({ isOpen: false, doctor: null });
       fetchDoctors();
@@ -517,14 +526,30 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
 
   async function handleReactivateDoctor(doctorId) {
     try {
-      const res = await fetch('/api/doctors/' + doctorId, {
+      const res = await fetch('/api/doctors/' + doctorId + '/status', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...headers() },
-        body: JSON.stringify({ is_active: true })
+        body: JSON.stringify({ status: 'active' })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       toast.success('Doctor reactivated');
+      fetchDoctors();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function handlePermanentDeleteDoctor() {
+    try {
+      const res = await fetch('/api/doctors/' + permanentDeleteDoctorModal.doctor.id + '/permanent', {
+        method: 'DELETE',
+        headers: headers()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      toast.success('Doctor permanently deleted');
+      setPermanentDeleteDoctorModal({ isOpen: false, doctor: null });
       fetchDoctors();
     } catch (err) {
       toast.error(err.message);
@@ -652,7 +677,14 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
         headers: headers()
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!res.ok) {
+        if (data.error && data.error.startsWith('has_associated_data:')) {
+          const details = data.error.replace('has_associated_data:', '');
+          toast.error('Cannot delete: patient is linked to ' + details + '.');
+          return;
+        }
+        throw new Error(data.error || 'Failed');
+      }
       toast.success('Patient deleted');
       setDeletePatientModal({ isOpen: false, patient: null });
       fetchPatients();
@@ -1011,7 +1043,7 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
     try {
       const [patientsRes, doctorsRes] = await Promise.all([
         fetch('/api/patients?page=1&limit=200', { headers: headers() }),
-        fetch('/api/doctors?page=1&limit=200&active=active', { headers: headers() })
+        fetch('/api/doctors?page=1&limit=200&status=active', { headers: headers() })
       ]);
       if (patientsRes.ok) {
         const data = await patientsRes.json();
@@ -2599,15 +2631,16 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
             clearDoctorsSearch={clearDoctorsSearch}
             doctorLoading={doctorLoading}
             onOpenCreateDoctor={() => {
-              setDoctorForm({ name: '', department: '', email: '', image_url: '' });
+              setDoctorForm({ name: '', department: '', email: '', image_url: '', status: 'active' });
               setShowDoctorModal(true);
             }}
             onOpenEditDoctor={(doctor) => {
-              setDoctorForm({ name: doctor.name, department: doctor.department || '', email: doctor.email || '', image_url: doctor.image_url || '' });
+              setDoctorForm({ name: doctor.name, department: doctor.department || '', email: doctor.email || '', image_url: doctor.image_url || '', status: doctor.status || 'active' });
               setEditingDoctor(doctor);
             }}
             onDeleteDoctor={(doctor) => setDeleteDoctorModal({ isOpen: true, doctor })}
             onReactivateDoctor={handleReactivateDoctor}
+            onPermanentDeleteDoctor={(doctor) => setPermanentDeleteDoctorModal({ isOpen: true, doctor })}
             doctorsPagination={doctorsPagination}
             changeDoctorsPage={changeDoctorsPage}
             fetchDoctorsWithLimit={fetchDoctorsWithLimit}
@@ -2967,6 +3000,18 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
                 />
               </div>
               <div>
+                <label className="block font-medium text-gray-700 mb-2">Status</label>
+                <select
+                  value={doctorForm.status}
+                  onChange={(e) => setDoctorForm({ ...doctorForm, status: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200 bg-white"
+                >
+                  <option value="active">Active</option>
+                  <option value="left">Left</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+              <div>
                 <label className="block font-medium text-gray-700 mb-2">Photo</label>
                 <label htmlFor="doctor-photo-upload" className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl cursor-pointer hover:bg-blue-600 transition-all">
                   <Upload className="w-4 h-4" />
@@ -3065,6 +3110,18 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
                 />
               </div>
               <div>
+                <label className="block font-medium text-gray-700 mb-2">Status</label>
+                <select
+                  value={doctorForm.status}
+                  onChange={(e) => setDoctorForm({ ...doctorForm, status: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200 bg-white"
+                >
+                  <option value="active">Active</option>
+                  <option value="left">Left</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+              <div>
                 <label className="block font-medium text-gray-700 mb-2">Photo</label>
                 <label htmlFor="doctor-photo-upload-edit" className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl cursor-pointer hover:bg-blue-600 transition-all">
                   <Upload className="w-4 h-4" />
@@ -3133,7 +3190,7 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
           <div className="bg-white rounded-2xl p-8 max-w-md w-full">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Delete Doctor</h3>
             <p className="text-gray-600 mb-6">
-              Are you sure you want to delete <strong>{deleteDoctorModal.doctor?.name}</strong>? This action cannot be undone.
+              Permanently delete <strong>{deleteDoctorModal.doctor?.name}</strong>? This only works if the doctor has no linked encounters or responses.
             </p>
             <div className="flex gap-4">
               <button
@@ -3147,6 +3204,32 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
                 className="flex-1 bg-red-500 text-white px-4 py-3 rounded-xl font-semibold hover:bg-red-600"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {permanentDeleteDoctorModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Permanently Delete Doctor</h3>
+            <p className="text-red-600 bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-sm">
+              <strong>Warning:</strong> This will permanently delete <strong>{permanentDeleteDoctorModal.doctor?.name}</strong>
+              {' '}and all their associated records (ratings, encounter links, visit links). This action cannot be undone.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setPermanentDeleteDoctorModal({ isOpen: false, doctor: null })}
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePermanentDeleteDoctor}
+                className="flex-1 bg-red-600 text-white px-4 py-3 rounded-xl font-semibold hover:bg-red-700"
+              >
+                Delete Permanently
               </button>
             </div>
           </div>

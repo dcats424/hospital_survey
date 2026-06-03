@@ -52,6 +52,9 @@ function register(app) {
       await logActivity(req.adminUser.id, 'delete_patient', { patient_id: req.params.id });
       res.json({ ok: true });
     } catch (e) {
+      if (e.message && e.message.startsWith('has_associated_data:')) {
+        return res.status(409).json({ error: e.message });
+      }
       res.status(500).json({ error: 'delete_failed' });
     }
   });

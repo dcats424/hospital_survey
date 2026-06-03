@@ -10,9 +10,9 @@ function register(app) {
       const search = String(req.query.search || '').trim();
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
-      const active = ['active', 'inactive'].includes(req.query.active) ? req.query.active : 'all';
+      const status = ['active', 'left', 'suspended'].includes(req.query.status) ? req.query.status : 'all';
       
-      const result = await doctorsService.getDoctorsPaginated({ search, page, limit, active });
+      const result = await doctorsService.getDoctorsPaginated({ search, page, limit, status });
       res.json(result);
     } catch (e) {
       return res.status(500).json({ error: 'fetch_failed' });
@@ -53,7 +53,33 @@ function register(app) {
       await logActivity(req.adminUser.id, 'delete_doctor', { doctor_id: req.params.id });
       res.json({ ok: true });
     } catch (e) {
+      if (e.message && e.message.startsWith('has_associated_data:')) {
+        return res.status(409).json({ error: e.message });
+      }
       res.status(500).json({ error: 'delete_failed' });
+    }
+  });
+
+  app.delete('/api/doctors/:id/permanent', requireAuth, requireModule('doctors'), async (req, res) => {
+    try {
+      const deleted = await doctorsService.permanentlyDeleteDoctor(req.params.id);
+      if (!deleted) return res.status(404).json({ error: 'doctor_not_found' });
+      await logActivity(req.adminUser.id, 'permanently_delete_doctor', { doctor_id: req.params.id });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: 'permanent_delete_failed' });
+    }
+  });
+
+  app.patch('/api/doctors/:id/status', requireAuth, requireModule('doctors'), async (req, res) => {
+    try {
+      const doctor = await doctorsService.updateDoctorStatus(req.params.id, req.body.status);
+      if (!doctor) return res.status(404).json({ error: 'doctor_not_found' });
+      await logActivity(req.adminUser.id, 'update_doctor_status', { doctor_id: doctor.id, status: req.body.status });
+      res.json({ doctor });
+    } catch (e) {
+      if (e.message === 'invalid_status') return res.status(400).json({ error: e.message });
+      res.status(500).json({ error: 'status_update_failed' });
     }
   });
 

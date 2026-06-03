@@ -49,7 +49,7 @@ function register(app, BASE_URL) {
         `SELECT d.id, d.name, d.department, d.image_url
          FROM encounter_doctors ed
          JOIN doctors d ON d.id = ed.doctor_id
-         WHERE ed.encounter_id = $1 AND d.is_active = TRUE
+         WHERE ed.encounter_id = $1 AND d.status = 'active'
          ORDER BY d.name ASC`,
         [encounter.rows[0].id]
       );
