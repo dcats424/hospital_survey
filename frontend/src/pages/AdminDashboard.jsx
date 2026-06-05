@@ -116,9 +116,15 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
   const [editUserModal, setEditUserModal] = React.useState({ isOpen: false, user: null });
   const [editUserData, setEditUserData] = React.useState({ username: '', email: '', password: '', is_active: true });
   const [activityLogs, setActivityLogs] = React.useState([]);
-  const [activityPagination, setActivityPagination] = React.useState({ page: 1, limit: 5, total: 0, total_pages: 0 });
-  const [activityFilters, setActivityFilters] = React.useState(() => getCurrentMonthRange());
+  const [activityPagination, setActivityPagination] = React.useState({ page: 1, limit: 20, total: 0, total_pages: 0 });
+  const [activityDateFilter, setActivityDateFilter] = React.useState('today');
+  const [activityDateRange, setActivityDateRange] = React.useState({ date_from: '', date_to: '' });
+  const [activitySearch, setActivitySearch] = React.useState('');
+  const [activitySearchInput, setActivitySearchInput] = React.useState('');
   const [loadingActivity, setLoadingActivity] = React.useState(false);
+  const activityDateFilterRef = React.useRef('today');
+  const activityDateRangeRef = React.useRef({ date_from: '', date_to: '' });
+  const activitySearchRef = React.useRef('');
   const [userDeleteModal, setUserDeleteModal] = React.useState({ isOpen: false, user: null });
 
   const [importModule, setImportModule] = React.useState('doctors');
@@ -145,6 +151,14 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
     dashboardDateRangeRef.current = range;
     dashboardDateFilterRef.current = 'today';
     setDashboardDateRange(range);
+  }, []);
+
+  React.useEffect(() => {
+    const dateStr = formatDate(new Date());
+    const range = { date_from: dateStr, date_to: dateStr };
+    activityDateRangeRef.current = range;
+    activityDateFilterRef.current = 'today';
+    setActivityDateRange(range);
   }, []);
 
   const [newQuestion, setNewQuestion] = React.useState({
@@ -1076,12 +1090,15 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showDoctorDropdown]);
 
-  async function fetchActivityLogs(page = 1, limit = activityPagination.limit, currentFilters = activityFilters) {
+  async function fetchActivityLogs(page = 1, limit = activityPagination.limit) {
     setLoadingActivity(true);
     try {
+      const { date_from, date_to } = activityDateRangeRef.current;
+      const search = activitySearchRef.current;
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-      if (currentFilters.date_from) params.set('date_from', currentFilters.date_from);
-      if (currentFilters.date_to) params.set('date_to', currentFilters.date_to);
+      if (date_from) params.set('date_from', date_from);
+      if (date_to) params.set('date_to', date_to);
+      if (search) params.set('search', search);
 
       const res = await fetch('/api/admin/activity-logs?' + params.toString(), { headers: headers() });
       const data = await res.json();
@@ -1103,14 +1120,80 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
 
   function changeActivityPage(newPage) {
     if (newPage < 1 || newPage > activityPagination.total_pages) return;
-    fetchActivityLogs(newPage, activityPagination.limit, activityFilters);
+    fetchActivityLogs(newPage, activityPagination.limit);
   }
 
-  function handleActivityFilterChange(field, value) {
-    const nextFilters = { ...activityFilters, [field]: value };
-    setActivityFilters(nextFilters);
-    setActivityPagination((previous) => ({ ...previous, page: 1 }));
-    fetchActivityLogs(1, activityPagination.limit, nextFilters);
+  function handleActivityFilterChange(filterType) {
+    const now = new Date();
+    let from = '';
+    let to = '';
+
+    if (filterType === 'today') {
+      from = getDateString(now);
+      to = getDateString(now);
+    } else if (filterType === 'yesterday') {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 1);
+      from = getDateString(d);
+      to = getDateString(d);
+    } else if (filterType === 'this_week') {
+      const start = new Date(now);
+      const day = start.getDay();
+      const offset = day === 0 ? 6 : day - 1;
+      start.setDate(start.getDate() - offset);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      from = getDateString(start);
+      to = getDateString(end);
+    } else if (filterType === 'this_month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      from = getDateString(start);
+      to = getDateString(end);
+    } else if (filterType === 'last_month') {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      from = getDateString(start);
+      to = getDateString(end);
+    } else if (filterType === 'custom') {
+      activityDateFilterRef.current = 'custom';
+      setActivityDateFilter('custom');
+      return;
+    }
+
+    activityDateFilterRef.current = filterType;
+    activityDateRangeRef.current = { date_from: from, date_to: to };
+    setActivityDateFilter(filterType);
+    setActivityDateRange({ date_from: from, date_to: to });
+    fetchActivityLogs(1, activityPagination.limit);
+  }
+
+  function handleActivityCustomDateChange(type, value) {
+    const range = { ...activityDateRangeRef.current, [type]: value };
+    activityDateRangeRef.current = range;
+    activityDateFilterRef.current = 'custom';
+    setActivityDateFilter('custom');
+    setActivityDateRange(range);
+    fetchActivityLogs(1, activityPagination.limit);
+  }
+
+  function handleActivitySearch() {
+    activitySearchRef.current = activitySearchInput;
+    setActivitySearch(activitySearchInput);
+    fetchActivityLogs(1, activityPagination.limit);
+  }
+
+  function clearActivityFilters() {
+    const dateStr = formatDate(new Date());
+    const range = { date_from: dateStr, date_to: dateStr };
+    activityDateFilterRef.current = 'today';
+    activityDateRangeRef.current = range;
+    activitySearchRef.current = '';
+    setActivityDateFilter('today');
+    setActivityDateRange(range);
+    setActivitySearch('');
+    setActivitySearchInput('');
+    fetchActivityLogs(1, activityPagination.limit);
   }
 
   async function handleImportData() {
@@ -1494,7 +1577,7 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
         } else if (activeTab === 'users') {
           await fetchUsers();
         } else if (activeTab === 'activity') {
-          await fetchActivityLogs(1, activityPagination.limit, activityFilters);
+          await fetchActivityLogs(1, activityPagination.limit);
         } else if (activeTab === 'doctors') {
           await fetchDoctors();
         } else if (activeTab === 'patients') {
@@ -2578,13 +2661,19 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
         {activeTab === 'activity' && (
           <ActivitySection
             activityLogs={activityLogs}
-            activityFilters={activityFilters}
             activityPagination={activityPagination}
             loadingActivity={loadingActivity}
-            onActivityFilterChange={handleActivityFilterChange}
-            onRefresh={() => fetchActivityLogs(activityPagination.page, activityPagination.limit, activityFilters)}
+            activityDateFilter={activityDateFilter}
+            activityDateRange={activityDateRange}
+            activitySearchInput={activitySearchInput}
+            setActivitySearchInput={setActivitySearchInput}
+            onDateFilterChange={handleActivityFilterChange}
+            onCustomDateChange={handleActivityCustomDateChange}
+            onSearchActivity={handleActivitySearch}
+            onClearFilters={clearActivityFilters}
+            onRefresh={() => fetchActivityLogs(activityPagination.page, activityPagination.limit)}
             onChangePage={changeActivityPage}
-            onChangeLimit={(limit) => fetchActivityLogs(1, limit, activityFilters)}
+            onChangeLimit={(limit) => fetchActivityLogs(1, limit)}
           />
         )}
 

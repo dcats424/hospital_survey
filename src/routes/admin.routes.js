@@ -255,6 +255,7 @@ function register(app) {
     try {
       const dateFrom = String(req.query.date_from || '').trim();
       const dateTo = String(req.query.date_to || '').trim();
+      const search = String(req.query.search || '').trim();
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 5));
       const offset = (page - 1) * limit;
@@ -275,9 +276,15 @@ function register(app) {
         paramIdx++;
       }
 
+      if (search) {
+        conditions.push(`(LOWER(au.username) LIKE $${paramIdx} OR LOWER(al.action) LIKE $${paramIdx} OR LOWER(REPLACE(al.action, '_', ' ')) LIKE $${paramIdx} OR LOWER(CAST(al.details AS TEXT)) LIKE $${paramIdx})`);
+        params.push('%' + search.toLowerCase() + '%');
+        paramIdx++;
+      }
+
       const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
-      const countResult = await db.query(`SELECT COUNT(*) FROM activity_logs al ${whereClause}`, params);
+      const countResult = await db.query(`SELECT COUNT(*) FROM activity_logs al LEFT JOIN admin_users au ON au.id = al.user_id ${whereClause}`, params);
       const total = parseInt(countResult.rows[0].count);
 
       const result = await db.query(`
