@@ -125,10 +125,11 @@ function register(app, BASE_URL) {
           return res.status(400).json({ error: 'token_already_used' });
         }
 
-        await client.query(
+        const result = await client.query(
           `INSERT INTO feedback_submissions 
            (token, patient_name, selected_doctor_ids, selected_doctor_names, question_answers, language) 
-           VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+           RETURNING id, submitted_at`,
           [token, patientName, selectedDoctorIds, selectedDoctorNames, JSON.stringify(questionAnswers), language]
         );
 
@@ -138,6 +139,16 @@ function register(app, BASE_URL) {
         );
 
         await client.query('COMMIT');
+
+        const io = req.app.get('io');
+        if (io) {
+          io.emit('new_response', {
+            submission_id: result.rows[0].id,
+            patient_name: patientName,
+            doctor_names: selectedDoctorNames.join(', '),
+            submitted_at: result.rows[0].submitted_at
+          });
+        }
       } catch (txErr) {
         await client.query('ROLLBACK');
         throw txErr;

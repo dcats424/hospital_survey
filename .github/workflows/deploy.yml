@@ -101,7 +101,7 @@ jobs:
 
           echo "Restarting PM2 application..."
           export NODE_ENV=production
-          pm2 restart survey-app --update-env || pm2 start src/server.js --name survey-app
+          pm2 restart survey-backend --update-env || pm2 start src/server.js --name survey-backend
 
           echo "Saving PM2 process list..."
           pm2 save

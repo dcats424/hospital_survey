@@ -1,4 +1,5 @@
 import React from 'react';
+import { io } from 'socket.io-client';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { PhoneInput } from 'react-international-phone';
@@ -1168,72 +1169,50 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
   }, [activeTab, initialPageLoading]);
 
   const lastSeenIdRef = React.useRef(0);
-  const pollIntervalRef = React.useRef(null);
+  const socketRef = React.useRef(null);
 
   React.useEffect(() => {
     if (!currentUser?.permissions?.includes('responses')) return;
 
-    async function syncAndStartPoll() {
-      try {
-        const res = await fetch('/api/notifications/last-seen', { headers: headers() });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.last_seen_submission_id > 0) {
-            lastSeenIdRef.current = data.last_seen_submission_id;
+    fetch('/api/notifications/last-seen', { headers: headers() })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.last_seen_submission_id > 0) {
+          lastSeenIdRef.current = data.last_seen_submission_id;
+        }
+      })
+      .catch(() => {})
+      .then(() => fetch('/api/responses?grouped=true&page=1&limit=20', { headers: headers() }))
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.responses?.length > 0) {
+          const missed = data.responses.filter(r => r.submission_id > lastSeenIdRef.current);
+          if (missed.length > 0) {
+            setNotifications(missed.slice(0, 10));
+            setHasNewNotifications(true);
           }
         }
-      } catch (e) {
-        console.error('Sync last-seen error:', e);
-      }
-    }
+      })
+      .catch(() => {});
 
-    syncAndStartPoll().then(() => {
-      if (pollIntervalRef.current) return;
+    const socket = io({ auth: { token: authToken } });
+    socketRef.current = socket;
 
-      async function pollForNewResponses() {
-        if (activeTab !== 'responses') return;
-        try {
-          const res = await fetch('/api/responses?grouped=true&page=1&limit=20', { headers: headers() });
-          const data = await res.json();
-          
-          if (!res.ok) {
-            console.error('Poll failed:', data.error);
-            return;
-          }
-          
-          if (data.responses && data.responses.length > 0) {
-            const latestId = Math.max(...data.responses.map(r => r.submission_id));
-            const lastKnownId = lastSeenIdRef.current;
-            
-            const newResponses = data.responses.filter(r => r.submission_id > lastKnownId);
-            
-            if (newResponses.length > 0) {
-              setNotifications(prev => {
-                const existingIds = new Set(prev.map(n => n.submission_id));
-                const uniqueNew = newResponses.filter(n => !existingIds.has(n.submission_id));
-                return [...uniqueNew, ...prev].slice(0, 10);
-              });
-              setHasNewNotifications(true);
-            }
-            
-            lastSeenIdRef.current = latestId;
-          }
-        } catch (err) {
-          console.error('Poll error:', err);
-        }
-      }
-
-      pollForNewResponses();
-      pollIntervalRef.current = setInterval(pollForNewResponses, 15000);
+    socket.on('new_response', (data) => {
+      setNotifications(prev => {
+        const existingIds = new Set(prev.map(n => n.submission_id));
+        if (existingIds.has(data.submission_id)) return prev;
+        return [data, ...prev].slice(0, 10);
+      });
+      setHasNewNotifications(true);
+      lastSeenIdRef.current = Math.max(lastSeenIdRef.current, data.submission_id);
     });
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
+      socket.disconnect();
+      socketRef.current = null;
     };
-  }, [activeTab, currentUser?.id]);
+  }, [currentUser?.id]);
 
   function handleOpenNotifications() {
     setShowNotifications(!showNotifications);

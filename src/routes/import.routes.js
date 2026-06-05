@@ -31,14 +31,15 @@ function register(app, upload) {
 
       const workbook = XLSX.readFile(req.file.path);
       const sheetName = workbook.SheetNames[0];
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+      const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
 
-      if (!rows || !rows.length) {
+      if (!rawRows || !rawRows.length) {
         fs.unlink(req.file.path, () => {});
         return res.status(400).json({ error: 'file_empty', message: 'No data rows found' });
       }
 
-      const headers = Object.keys(rows[0]).map(h => h.toLowerCase().trim());
+      const rows = rawRows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase().trim(), v])));
+      const headers = Object.keys(rows[0]);
       let expectedHeaders;
       if (module === 'doctors') {
         expectedHeaders = ['name', 'department', 'email'];

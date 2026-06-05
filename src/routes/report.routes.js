@@ -239,15 +239,33 @@ function sendPdf(res, reportType, reportData, dateFrom, dateTo) {
   }
 
   let y = 95;
+  const fs = 7;
   if (reportType === 'doctor') {
-    const headers = ['No', 'Doctor', 'Patients', 'Average'];
-    const widths = [35, 260, 80, 100];
-    doc.fontSize(8).font('Helvetica-Bold');
+    const doctors = reportData.doctors || [];
+    const doctorQuestionKeys = getQuestionKeys(doctors);
+    const hasDynamicCols = doctorQuestionKeys.length > 0;
+
+    const headers = hasDynamicCols
+      ? ['No', 'Doctor', 'Patients', ...doctorQuestionKeys, 'Average']
+      : ['No', 'Doctor', 'Patients', 'Average'];
+
+    const pageW = 515;
+    const noW = 22, patientsW = 50, avgW = 55, doctorW = hasDynamicCols ? 100 : 260;
+    let widths;
+    if (hasDynamicCols) {
+      const remaining = pageW - noW - doctorW - patientsW - avgW;
+      const eachQ = Math.floor(remaining / doctorQuestionKeys.length);
+      widths = [noW, doctorW, patientsW, ...doctorQuestionKeys.map(() => eachQ), avgW];
+    } else {
+      widths = [35, 260, 80, 100];
+    }
+
+    doc.fontSize(fs).font('Helvetica-Bold');
     headers.forEach((header, index) => doc.text(header, 40 + widths.slice(0, index).reduce((a, b) => a + b, 0), y, { width: widths[index] }));
-    y += 18;
+    y += 14;
     doc.font('Helvetica');
 
-    (reportData.doctors || []).forEach((doctor, index) => {
+    doctors.forEach((doctor, index) => {
       if (y > 760) {
         doc.addPage();
         y = 40;
@@ -256,27 +274,50 @@ function sendPdf(res, reportType, reportData, dateFrom, dateTo) {
         String(index + 1),
         doctor.doctor_name,
         String(doctor.patient_count),
+        ...doctorQuestionKeys.map(key => getDoctorColumnValue(doctor, key)),
         doctor.average_rating ? doctor.average_rating.toFixed(2) : '0.00'
       ];
       values.forEach((value, column) => doc.text(value, 40 + widths.slice(0, column).reduce((a, b) => a + b, 0), y, { width: widths[column] }));
-      y += 18;
+      y += 14;
     });
   } else {
-    doc.fontSize(10).font('Helvetica-Bold').text('Total Submissions', 40, y);
-    doc.font('Helvetica').text(String(reportData.total_submissions || 0), 200, y);
-    y += 24;
-    for (const item of reportData.general_survey || []) {
-      if (y > 760) {
-        doc.addPage();
-        y = 40;
-      }
-      const value = item.type === 'yes_no'
-        ? `Yes: ${item.yes_count}, No: ${item.no_count}`
-        : String(item.average || '-');
-      doc.font('Helvetica-Bold').text(item.question_key, 40, y, { width: 220 });
-      doc.font('Helvetica').text(value, 280, y, { width: 220 });
-      y += 18;
+    const generalSurvey = reportData.general_survey || [];
+    const generalQuestionKeys = generalSurvey.map(item => item.question_key);
+    const hasKeys = generalQuestionKeys.length > 0;
+
+    const headers = hasKeys
+      ? ['Total Submissions', ...generalQuestionKeys, 'Average']
+      : ['Total Submissions'];
+
+    const pageW = 515;
+    const totalW = 80, avgW = 50;
+    let widths;
+    if (hasKeys) {
+      const remaining = pageW - totalW - avgW;
+      const eachQ = Math.floor(remaining / generalQuestionKeys.length);
+      widths = [totalW, ...generalQuestionKeys.map(() => eachQ), avgW];
+    } else {
+      widths = [pageW];
     }
+
+    doc.fontSize(fs).font('Helvetica-Bold');
+    headers.forEach((header, index) => doc.text(header, 40 + widths.slice(0, index).reduce((a, b) => a + b, 0), y, { width: widths[index] }));
+    y += 14;
+    doc.font('Helvetica');
+
+    const numericAverages = generalSurvey.filter(item => item.type !== 'yes_no' && item.average).map(item => item.average);
+    const overallAvg = numericAverages.length > 0 ? (numericAverages.reduce((a, b) => a + b, 0) / numericAverages.length).toFixed(1) : '-';
+
+    const rowValues = [
+      String(reportData.total_submissions || 0),
+      ...generalQuestionKeys.map(key => {
+        const item = generalSurvey.find(q => q.question_key === key);
+        return item ? (item.type === 'yes_no' ? `Yes: ${item.yes_count}, No: ${item.no_count}` : String(item.average || '-')) : '-';
+      }),
+      overallAvg
+    ];
+    rowValues.forEach((value, column) => doc.text(value, 40 + widths.slice(0, column).reduce((a, b) => a + b, 0), y, { width: widths[column] }));
+    y += 14;
   }
 
   doc.end();
