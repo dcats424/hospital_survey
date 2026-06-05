@@ -694,14 +694,17 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
     }
   }
 
-  async function fetchEncounters(page = 1, search = '') {
+  async function fetchEncounters(page = 1, search = '', filters = {}) {
     setEncounterLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: encountersPagination.limit });
       if (search) params.set('search', search);
-      if (encountersDateFrom) params.set('date_from', encountersDateFrom);
-      if (encountersDateTo) params.set('date_to', encountersDateTo);
-      if (encounterSurveyStatus) params.set('survey_status', encounterSurveyStatus);
+      const dateFrom = filters.dateFrom !== undefined ? filters.dateFrom : encountersDateFrom;
+      const dateTo = filters.dateTo !== undefined ? filters.dateTo : encountersDateTo;
+      const surveyStatus = filters.surveyStatus !== undefined ? filters.surveyStatus : encounterSurveyStatus;
+      if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
+      if (surveyStatus) params.set('survey_status', surveyStatus);
       const res = await fetch('/api/encounters?' + params.toString(), { headers: headers() });
       const data = await res.json();
       if (res.ok) {
@@ -735,15 +738,18 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
     fetchEncounters(newPage, encountersSearch);
   }
 
-  async function fetchEncountersWithLimit(page, search, limit) {
+  async function fetchEncountersWithLimit(page, search, limit, filters = {}) {
     setEncountersPagination(p => ({ ...p, limit, page }));
     setEncounterLoading(true);
     try {
       const params = new URLSearchParams({ page, limit });
       if (search) params.set('search', search);
-      if (encountersDateFrom) params.set('date_from', encountersDateFrom);
-      if (encountersDateTo) params.set('date_to', encountersDateTo);
-      if (encounterSurveyStatus) params.set('survey_status', encounterSurveyStatus);
+      const dateFrom = filters.dateFrom !== undefined ? filters.dateFrom : encountersDateFrom;
+      const dateTo = filters.dateTo !== undefined ? filters.dateTo : encountersDateTo;
+      const surveyStatus = filters.surveyStatus !== undefined ? filters.surveyStatus : encounterSurveyStatus;
+      if (dateFrom) params.set('date_from', dateFrom);
+      if (dateTo) params.set('date_to', dateTo);
+      if (surveyStatus) params.set('survey_status', surveyStatus);
       const res = await fetch('/api/encounters?' + params.toString(), { headers: headers() });
       const data = await res.json();
       if (res.ok) {
@@ -2670,17 +2676,17 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
             encountersDateFrom={encountersDateFrom}
             onChangeDateFrom={(value) => {
               setEncountersDateFrom(value);
-              fetchEncounters(1, encountersSearch);
+              fetchEncounters(1, encountersSearch, { dateFrom: value });
             }}
             encountersDateTo={encountersDateTo}
             onChangeDateTo={(value) => {
               setEncountersDateTo(value);
-              fetchEncounters(1, encountersSearch);
+              fetchEncounters(1, encountersSearch, { dateTo: value });
             }}
             encounterSurveyStatus={encounterSurveyStatus}
             onChangeSurveyStatus={(value) => {
               setEncounterSurveyStatus(value);
-              fetchEncounters(1, encountersSearch);
+              fetchEncounters(1, encountersSearch, { surveyStatus: value });
             }}
             onClearFilters={() => {
               setEncountersSearchInput('');
