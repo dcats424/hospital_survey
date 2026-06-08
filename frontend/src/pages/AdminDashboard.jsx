@@ -20,7 +20,7 @@ import {
   Heart, Send, CheckCircle2, Circle, ArrowRight, ArrowLeft,
   ClipboardList, HeartPulse, Shield, Award, ChevronDown, FileSpreadsheet,
   Bell, LogOut, Settings, UserCog, History, Edit, ToggleLeft, ToggleRight, Power, Mail, Copy,
-  Upload, Smartphone, Clock
+  Upload, Smartphone, Clock, UserPlus
 } from 'lucide-react';
 import DoctorRatingsPage from './DoctorRatingsPage';
 import ReportsPage from './ReportsPage';
@@ -225,7 +225,9 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
   const [sendingSms, setSendingSms] = React.useState(new Set());
   const [sendingAllSms, setSendingAllSms] = React.useState(false);
   const [showEncounterModal, setShowEncounterModal] = React.useState(false);
+  const [encounterModalTab, setEncounterModalTab] = React.useState('existing');
   const [encounterForm, setEncounterForm] = React.useState({ patient_id: '', doctor_ids: [], status: 'in_progress' });
+  const [newPatientEncounterForm, setNewPatientEncounterForm] = React.useState({ name: '', phone: '+251', doctor_ids: [], status: 'in_progress' });
   const [encounterLoading, setEncounterLoading] = React.useState(false);
   const [encounterPatients, setEncounterPatients] = React.useState([]);
   const [encounterDoctors, setEncounterDoctors] = React.useState([]);
@@ -829,6 +831,50 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
       setPatientSearch('');
       setDoctorSearch('');
       fetchEncounters(encountersPagination.page, encountersSearch);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setEncounterLoading(false);
+    }
+  }
+
+  function toggleNewPatientDoctor(doctorId) {
+    setNewPatientEncounterForm(prev => {
+      const exists = prev.doctor_ids.includes(doctorId);
+      return {
+        ...prev,
+        doctor_ids: exists
+          ? prev.doctor_ids.filter(id => id !== doctorId)
+          : [...prev.doctor_ids, doctorId]
+      };
+    });
+  }
+
+  async function handleCreateEncounterWithNewPatient(e) {
+    e.preventDefault();
+    if (!newPatientEncounterForm.name.trim()) {
+      toast.error('Patient name is required');
+      return;
+    }
+    if (!newPatientEncounterForm.doctor_ids.length) {
+      toast.error('Please select at least one doctor');
+      return;
+    }
+    setEncounterLoading(true);
+    try {
+      const res = await fetch('/api/encounters/with-new-patient', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers() },
+        body: JSON.stringify(newPatientEncounterForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      toast.success('Patient & Encounter created successfully');
+      setShowEncounterModal(false);
+      setNewPatientEncounterForm({ name: '', phone: '+251', doctor_ids: [], status: 'in_progress' });
+      setDoctorSearch('');
+      fetchEncounters(encountersPagination.page, encountersSearch);
+      fetchPatients(patientsPagination.page, patientsSearch);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -2753,6 +2799,10 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
             onSendAllSurveySms={handleSendAllSurveySms}
             onOpenCreateEncounter={() => {
               setEncounterForm({ patient_id: '', doctor_ids: [], status: 'in_progress' });
+              setNewPatientEncounterForm({ name: '', phone: '+251', doctor_ids: [], status: 'in_progress' });
+              setEncounterModalTab('existing');
+              setPatientSearch('');
+              setDoctorSearch('');
               loadEncounterFormData();
               setShowEncounterModal(true);
             }}
@@ -3430,138 +3480,291 @@ export default function AdminDashboard({ authToken, currentUser, onLogout }) {
 
       {showEncounterModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-lg w-full">
+          <div className="bg-white rounded-2xl p-8 max-w-xl w-full">
             <h3 className="text-xl font-bold text-gray-800 mb-6">Create Encounter</h3>
-            <form onSubmit={handleCreateEncounter} className="space-y-4">
-              <div className="relative">
-                <label className="block font-medium text-gray-700 mb-2">Patient *</label>
-                <input
-                  type="text"
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setEncounterForm(prev => ({ ...prev, patient_id: '' }));
-                    setShowPatientDropdown(true);
-                  }}
-                  onFocus={() => setShowPatientDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowPatientDropdown(false), 200)}
-                  placeholder="Search patients..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200"
-                />
-                {showPatientDropdown && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                    {encounterPatients
-                      .filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()))
-                      .map(p => (
-                        <button
-                          type="button"
-                          key={p.id}
-                          onClick={() => {
-                            setPatientSearch(p.name);
-                            setEncounterForm(prev => ({ ...prev, patient_id: p.id }));
-                            setShowPatientDropdown(false);
-                          }}
-                          className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 transition-colors ${encounterForm.patient_id === p.id ? 'bg-blue-50 font-semibold text-blue-700' : 'text-gray-700'}`}
-                        >
-                          {p.name}
-                        </button>
-                      ))}
-                    {encounterPatients.filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase())).length === 0 && (
-                      <p className="px-4 py-3 text-sm text-gray-400">No patients found</p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="relative" ref={doctorDropdownRef}>
-                <label className="block font-medium text-gray-700 mb-2">Doctors *</label>
-                <input
-                  type="text"
-                  value={doctorSearch}
-                  onChange={(e) => {
-                    setDoctorSearch(e.target.value);
-                    setShowDoctorDropdown(true);
-                  }}
-                  onFocus={() => setShowDoctorDropdown(true)}
-                  placeholder="Search doctors..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200"
-                />
-                {showDoctorDropdown && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                    {encounterDoctors
-                      .filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase()))
-                      .map(d => (
-                        <label key={d.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={encounterForm.doctor_ids.includes(d.id)}
-                            onChange={() => toggleEncounterDoctor(d.id)}
-                            className="w-4 h-4 text-blue-600 rounded shrink-0"
-                          />
-                          <div className="flex items-center gap-2 min-w-0">
-                            {d.image_url ? (
-                              <img src={d.image_url} alt={d.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
-                            ) : (
-                              <div className="w-7 h-7 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0">
-                                {d.name.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-800 truncate">{d.name}</p>
-                              {d.department && <p className="text-xs text-gray-500 truncate">{d.department}</p>}
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    {encounterDoctors.filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase())).length === 0 && (
-                      <p className="px-4 py-3 text-sm text-gray-400">No doctors found</p>
-                    )}
-                  </div>
-                )}
-                {encounterForm.doctor_ids.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {encounterForm.doctor_ids.map(id => {
-                      const d = encounterDoctors.find(doc => doc.id === id);
-                      if (!d) return null;
-                      return (
-                        <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
-                          {d.name}
-                          <button type="button" onClick={() => toggleEncounterDoctor(id)} className="hover:text-blue-900">
-                            <X className="w-3 h-3" />
+
+            <div className="flex gap-2 mb-6 bg-gray-100 p-1.5 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => setEncounterModalTab('existing')}
+                className={`flex-1 flex flex-col items-center gap-0.5 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all ${
+                  encounterModalTab === 'existing'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  Existing Patient
+                </span>
+                <span className="text-[10px] font-normal text-gray-400">Select existing</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEncounterModalTab('new')}
+                className={`flex-1 flex flex-col items-center gap-0.5 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all ${
+                  encounterModalTab === 'new'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <UserPlus className="w-4 h-4" />
+                  New Patient
+                </span>
+                <span className="text-[10px] font-normal text-gray-400">Create new</span>
+              </button>
+            </div>
+
+            {encounterModalTab === 'existing' ? (
+              <form onSubmit={handleCreateEncounter} className="space-y-4">
+                <div className="relative">
+                  <label className="block font-medium text-gray-700 mb-2">Patient *</label>
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={(e) => {
+                      setPatientSearch(e.target.value);
+                      setEncounterForm(prev => ({ ...prev, patient_id: '' }));
+                      setShowPatientDropdown(true);
+                    }}
+                    onFocus={() => setShowPatientDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowPatientDropdown(false), 200)}
+                    placeholder="Search patients..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200"
+                  />
+                  {showPatientDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {encounterPatients
+                        .filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()))
+                        .map(p => (
+                          <button
+                            type="button"
+                            key={p.id}
+                            onClick={() => {
+                              setPatientSearch(p.name);
+                              setEncounterForm(prev => ({ ...prev, patient_id: p.id }));
+                              setShowPatientDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 transition-colors ${encounterForm.patient_id === p.id ? 'bg-blue-50 font-semibold text-blue-700' : 'text-gray-700'}`}
+                          >
+                            {p.name}
                           </button>
-                        </span>
-                      );
-                    })}
+                        ))}
+                      {encounterPatients.filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase())).length === 0 && (
+                        <p className="px-4 py-3 text-sm text-gray-400">No patients found</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="relative" ref={doctorDropdownRef}>
+                  <label className="block font-medium text-gray-700 mb-2">Doctors *</label>
+                  <input
+                    type="text"
+                    value={doctorSearch}
+                    onChange={(e) => {
+                      setDoctorSearch(e.target.value);
+                      setShowDoctorDropdown(true);
+                    }}
+                    onFocus={() => setShowDoctorDropdown(true)}
+                    placeholder="Search doctors..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200"
+                  />
+                  {showDoctorDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {encounterDoctors
+                        .filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase()))
+                        .map(d => (
+                          <label key={d.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={encounterForm.doctor_ids.includes(d.id)}
+                              onChange={() => toggleEncounterDoctor(d.id)}
+                              className="w-4 h-4 text-blue-600 rounded shrink-0"
+                            />
+                            <div className="flex items-center gap-2 min-w-0">
+                              {d.image_url ? (
+                                <img src={d.image_url} alt={d.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-7 h-7 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0">
+                                  {d.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{d.name}</p>
+                                {d.department && <p className="text-xs text-gray-500 truncate">{d.department}</p>}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      {encounterDoctors.filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase())).length === 0 && (
+                        <p className="px-4 py-3 text-sm text-gray-400">No doctors found</p>
+                      )}
+                    </div>
+                  )}
+                  {encounterForm.doctor_ids.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {encounterForm.doctor_ids.map(id => {
+                        const d = encounterDoctors.find(doc => doc.id === id);
+                        if (!d) return null;
+                        return (
+                          <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                            {d.name}
+                            <button type="button" onClick={() => toggleEncounterDoctor(id)} className="hover:text-blue-900">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block font-medium text-gray-700 mb-2">Status</label>
+                  <select
+                    value={encounterForm.status}
+                    onChange={(e) => setEncounterForm(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200 bg-white"
+                  >
+                    <option value="in_progress">In Progress</option>
+                    <option value="finished">Finished</option>
+                  </select>
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEncounterModal(false)}
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={encounterLoading}
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-3 rounded-xl font-semibold hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50"
+                  >
+                    {encounterLoading ? 'Creating...' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleCreateEncounterWithNewPatient} className="space-y-4">
+                <div className="grid grid-cols-[1fr_1.5fr] gap-4">
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">Patient Name *</label>
+                    <input
+                      type="text"
+                      value={newPatientEncounterForm.name}
+                      onChange={(e) => setNewPatientEncounterForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200"
+                      placeholder="John Doe"
+                      required
+                    />
                   </div>
-                )}
-              </div>
-              <div>
-                <label className="block font-medium text-gray-700 mb-2">Status</label>
-                <select
-                  value={encounterForm.status}
-                  onChange={(e) => setEncounterForm(prev => ({ ...prev, status: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200 bg-white"
-                >
-                  <option value="in_progress">In Progress</option>
-                  <option value="finished">Finished</option>
-                </select>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowEncounterModal(false)}
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={encounterLoading}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-3 rounded-xl font-semibold hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50"
-                >
-                  {encounterLoading ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </form>
+                  <div>
+                    <label className="block font-medium text-gray-700 mb-2">Mobile *</label>
+                    <PhoneInput
+                      defaultCountry="ET"
+                      flags={phoneFlags}
+                      value={newPatientEncounterForm.phone}
+                      onChange={(value) => setNewPatientEncounterForm(prev => ({ ...prev, phone: value || '+251' }))}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="relative" ref={doctorDropdownRef}>
+                  <label className="block font-medium text-gray-700 mb-2">Doctors *</label>
+                  <input
+                    type="text"
+                    value={doctorSearch}
+                    onChange={(e) => {
+                      setDoctorSearch(e.target.value);
+                      setShowDoctorDropdown(true);
+                    }}
+                    onFocus={() => setShowDoctorDropdown(true)}
+                    placeholder="Search doctors..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200"
+                  />
+                  {showDoctorDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {encounterDoctors
+                        .filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase()))
+                        .map(d => (
+                          <label key={d.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={newPatientEncounterForm.doctor_ids.includes(d.id)}
+                              onChange={() => toggleNewPatientDoctor(d.id)}
+                              className="w-4 h-4 text-blue-600 rounded shrink-0"
+                            />
+                            <div className="flex items-center gap-2 min-w-0">
+                              {d.image_url ? (
+                                <img src={d.image_url} alt={d.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-7 h-7 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0">
+                                  {d.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{d.name}</p>
+                                {d.department && <p className="text-xs text-gray-500 truncate">{d.department}</p>}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      {encounterDoctors.filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase())).length === 0 && (
+                        <p className="px-4 py-3 text-sm text-gray-400">No doctors found</p>
+                      )}
+                    </div>
+                  )}
+                  {newPatientEncounterForm.doctor_ids.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {newPatientEncounterForm.doctor_ids.map(id => {
+                        const d = encounterDoctors.find(doc => doc.id === id);
+                        if (!d) return null;
+                        return (
+                          <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                            {d.name}
+                            <button type="button" onClick={() => toggleNewPatientDoctor(id)} className="hover:text-blue-900">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block font-medium text-gray-700 mb-2">Status</label>
+                  <select
+                    value={newPatientEncounterForm.status}
+                    onChange={(e) => setNewPatientEncounterForm(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-200 bg-white"
+                  >
+                    <option value="in_progress">In Progress</option>
+                    <option value="finished">Finished</option>
+                  </select>
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEncounterModal(false)}
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-xl font-medium hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={encounterLoading}
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-3 rounded-xl font-semibold hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50"
+                  >
+                    {encounterLoading ? 'Creating...' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

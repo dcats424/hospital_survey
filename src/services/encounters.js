@@ -1,6 +1,7 @@
 const db = require('../db');
 const surveyService = require('./survey');
 const smsService = require('./sms');
+const { validateEthiopianPhone } = require('../utils/validators');
 
 function makeId(prefix) {
   const crypto = require('crypto');
@@ -166,6 +167,79 @@ async function createEncounter({ patient_id, doctor_ids, status }) {
   return getEncounterById(id);
 }
 
+async function createEncounterWithNewPatient({ name, phone, doctor_ids, status }) {
+  if (!doctor_ids || !doctor_ids.length) throw new Error('at_least_one_doctor_required');
+
+  const encounterId = makeId('E');
+  const isFinished = status === 'finished';
+  let token = null;
+  let link = null;
+
+  if (isFinished) {
+    const tokenData = await surveyService.createToken();
+    token = tokenData.token;
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    link = baseUrl + '/survey?t=' + encodeURIComponent(token);
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const patient = await createPatientInlineWithClient(client, { name, phone });
+
+    if (isFinished) {
+      await client.query(
+        `INSERT INTO encounters (id, patient_id, status, survey_token, survey_link, finished_at, updated_at)
+         VALUES ($1, $2, 'finished', $3, $4, NOW(), NOW())`,
+        [encounterId, patient.id, token, link]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO encounters (id, patient_id) VALUES ($1, $2)`,
+        [encounterId, patient.id]
+      );
+    }
+
+    for (const doctorId of doctor_ids) {
+      await client.query(
+        `INSERT INTO encounter_doctors (encounter_id, doctor_id) VALUES ($1, $2)`,
+        [encounterId, doctorId]
+      );
+    }
+
+    await client.query('COMMIT');
+    return getEncounterById(encounterId);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function createPatientInlineWithClient(client, { name, phone }) {
+  if (!name || !name.trim()) throw new Error('patient_name_required');
+  const trimmedName = name.trim();
+  if (trimmedName.length < 2) throw new Error('patient_name_too_short');
+  if (trimmedName.length > 100) throw new Error('patient_name_too_long');
+  if (!phone || !String(phone).trim()) throw new Error('phone_required');
+  const trimmedPhone = String(phone).trim();
+  const normalizedPhone = validateEthiopianPhone(trimmedPhone);
+  if (normalizedPhone === false) throw new Error('invalid_phone_format');
+  const id = makeId('P');
+  try {
+    const result = await client.query(
+      `INSERT INTO patients (id, name, phone) VALUES ($1, $2, $3) RETURNING *`,
+      [id, trimmedName, normalizedPhone]
+    );
+    return result.rows[0];
+  } catch (e) {
+    if (e.code === '23505') throw new Error('duplicate_phone');
+    throw e;
+  }
+}
+
 async function finishEncounter(id) {
   const encounter = await getEncounterById(id);
   if (!encounter) throw new Error('encounter_not_found');
@@ -257,4 +331,4 @@ async function sendAllSurveySms(ids) {
   return { sent: sent.length, failed: failed.length, errors: failed };
 }
 
-module.exports = { getEncountersPaginated, getEncounterById, createEncounter, finishEncounter, deleteEncounter, bulkDeleteEncounters, sendSurveySms, sendAllSurveySms };
+module.exports = { getEncountersPaginated, getEncounterById, createEncounter, createEncounterWithNewPatient, finishEncounter, deleteEncounter, bulkDeleteEncounters, sendSurveySms, sendAllSurveySms };

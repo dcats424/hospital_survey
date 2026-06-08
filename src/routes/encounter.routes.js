@@ -43,6 +43,22 @@ function register(app) {
     }
   });
 
+  app.post('/api/encounters/with-new-patient', requireAuth, requireModule('encounters'), async (req, res) => {
+    try {
+      const { name, phone, doctor_ids, status } = req.body;
+      const encounter = await encountersService.createEncounterWithNewPatient({ name, phone, doctor_ids, status });
+      await logActivity(req.adminUser.id, 'create_patient', { patient_id: encounter.patient_id });
+      await logActivity(req.adminUser.id, 'create_encounter', { encounter_id: encounter.id });
+      res.json({ encounter });
+    } catch (e) {
+      const knownErrors = ['patient_name_required', 'patient_name_too_short', 'patient_name_too_long', 'phone_required', 'invalid_phone_format', 'duplicate_phone', 'at_least_one_doctor_required'];
+      if (knownErrors.includes(e.message)) {
+        return res.status(400).json({ error: e.message });
+      }
+      res.status(500).json({ error: 'create_failed' });
+    }
+  });
+
   app.patch('/api/encounters/:id/finish', requireAuth, requireModule('encounters'), async (req, res) => {
     try {
       const encounter = await encountersService.finishEncounter(req.params.id);

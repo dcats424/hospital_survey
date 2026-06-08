@@ -119,6 +119,13 @@ export async function createEncounter(token, data) {
   });
 }
 
+export async function createEncounterWithNewPatient(token, data) {
+  return apiFetchWithToken('/api/encounters/with-new-patient', token, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
 export async function finishEncounter(token, id) {
   return apiFetchWithToken(`/api/encounters/${id}/finish`, token, { method: 'PATCH' });
 }
