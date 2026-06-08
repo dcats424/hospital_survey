@@ -655,14 +655,14 @@ export default function SurveyPage() {
                         </div>
                       </div>
 
-                      <div className="flex justify-between">
+                      <div className="grid grid-cols-2 gap-4">
                         <button
                           type="button"
                           onClick={goToPrevPage}
-                          className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-200"
+                          className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
                         >
-                          <ArrowLeft className="w-5 h-5" />
-                          {t('back', selectedLang)}
+                          <ArrowLeft className="w-5 h-5 shrink-0" />
+                          <span>{t('back', selectedLang)}</span>
                         </button>
                         <button
                           type="button"
@@ -686,10 +686,10 @@ export default function SurveyPage() {
                             setError('');
                             goToNextPage();
                           }}
-                          className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-200"
+                          className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
                         >
-                          {currentPage === doctors.length - 1 && generalQuestions.length > 0 ? t('nextGeneral', selectedLang) : t('next', selectedLang)}
-                          <ArrowRight className="w-5 h-5" />
+                          <span>{currentPage === doctors.length - 1 && generalQuestions.length > 0 ? t('nextGeneral', selectedLang) : t('next', selectedLang)}</span>
+                          <ArrowRight className="w-5 h-5 shrink-0" />
                         </button>
                       </div>
                     </div>
@@ -721,22 +721,22 @@ export default function SurveyPage() {
                       ))}
                     </div>
 
-                    <div className="flex justify-between">
+                    <div className="grid grid-cols-2 gap-4">
                       <button
                         type="button"
                         onClick={goToPrevPage}
-                        className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-200"
+                        className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
                       >
-                        <ArrowLeft className="w-5 h-5" />
-                        {t('back', selectedLang)}
+                        <ArrowLeft className="w-5 h-5 shrink-0" />
+                        <span>{t('back', selectedLang)}</span>
                       </button>
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-emerald-600 hover:to-teal-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-200 disabled:opacity-50"
+                        className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold py-3 px-6 rounded-xl hover:from-emerald-600 hover:to-teal-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 disabled:opacity-50"
                       >
-                        {submitting ? t('submitting', selectedLang) : t('submit', selectedLang)}
-                        <Send className="w-5 h-5" />
+                        <span>{submitting ? t('submitting', selectedLang) : t('submit', selectedLang)}</span>
+                        <Send className="w-5 h-5 shrink-0" />
                       </button>
                     </div>
                   </div>
