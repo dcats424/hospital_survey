@@ -282,7 +282,7 @@ async function sendSurveySms(id) {
 
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
   const link = baseUrl + '/survey?t=' + encodeURIComponent(encounter.survey_token);
-  const message = 'Please provide your feedback: ' + link;
+  const message = 'ከግሩም ሆስፒታል ያገኙትን አገልግሎት በተመለከተ ያለዎትን አስተያየት ያጋሩን። ' + link + ' እናመሰግናለን።';
   const result = await smsService.sendSms({ to: encounter.patient_phone, message });
 
   if (!result.ok) {
